@@ -1,0 +1,123 @@
+---
+- name: Deploy Flask Todo Application
+  hosts: webservers
+  become: yes
+  vars:
+    app_user: todoapp
+    app_dir: /opt/todoapp
+    app_name: flask-todo
+    db_host: "{{ groups['databases'][0] }}"
+    db_name: todolist
+    db_user: postgres
+    db_password: password
+    venv_dir: "{{ app_dir }}/venv"
+
+  tasks:
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: "app/{{ item }}"
+        dest: "{{ app_dir }}/"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+      with_items:
+        - app.py
+        - requirements.txt
+      notify: restart flask app
+
+    - name: Create templates directory
+      file:
+        path: "{{ app_dir }}/templates"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Copy HTML template
+      copy:
+        src: "app/templates/index.html"
+        dest: "{{ app_dir }}/templates/"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+      notify: restart flask app
+
+    - name: Create Python virtual environment
+      command: python3 -m venv {{ venv_dir }}
+      become_user: "{{ app_user }}"
+      args:
+        creates: "{{ venv_dir }}/bin/activate"
+
+    - name: Install Python dependencies
+      pip:
+        requirements: "{{ app_dir }}/requirements.txt"
+        virtualenv: "{{ venv_dir }}"
+      become_user: "{{ app_user }}"
+
+    - name: Create systemd service file for Flask app
+      template:
+        src: flask-app.service.j2
+        dest: /etc/systemd/system/{{ app_name }}.service
+        mode: '0644'
+      notify:
+        - reload systemd
+        - restart flask app
+
+    - name: Create environment file for Flask app
+      template:
+        src: flask-app.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0600'
+      notify: restart flask app
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: restart nginx
+
+    - name: Create Nginx configuration for Flask app
+      template:
+        src: nginx-flask.conf.j2
+        dest: /etc/nginx/sites-available/{{ app_name }}
+        mode: '0644'
+      notify: restart nginx
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/{{ app_name }}
+        dest: /etc/nginx/sites-enabled/{{ app_name }}
+        state: link
+      notify: restart nginx
+
+    - name: Start and enable Flask application
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart flask app
+      systemd:
+        name: "{{ app_name }}"
+        state: restarted
+
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
