@@ -1,0 +1,41 @@
+---
+- name: Configure server infrastructure
+  hosts: all
+  become: yes
+
+  tasks:
+      - name: Update apt cache
+        apt:
+            update_cache: yes
+
+      - name: Install required packages
+        apt:
+            name:
+                - python3
+                - python3-pip
+                - python3-venv
+                - nginx
+                - postgresql
+                - libpq-dev
+            state: present
+
+      - name: Create application user
+        user:
+            name: todoapp
+            shell: /bin/bash
+            create_home: yes
+            state: present
+
+      - name: Create PostgreSQL user
+        become_user: postgres
+        postgresql_user:
+            name: postgres
+            password: password
+            state: present
+
+      - name: Create PostgreSQL database
+        become_user: postgres
+        postgresql_db:
+            name: todolist
+            owner: postgres
+            state: present

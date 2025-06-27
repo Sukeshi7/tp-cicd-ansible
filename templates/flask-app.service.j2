@@ -1,0 +1,16 @@
+[Unit]
+Description=Flask Todo Application
+After=network.target
+
+[Service]
+Type=simple
+User={{ app_user }}
+WorkingDirectory={{ app_dir }}
+Environment=PATH={{ venv_dir }}/bin
+EnvironmentFile={{ app_dir }}/.env
+ExecStart={{ venv_dir }}/bin/python app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
